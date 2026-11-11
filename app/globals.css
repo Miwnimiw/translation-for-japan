@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #FAFAF9;
+  color: #1C1D21;
+}
+.dark body {
+  background-color: #15161A;
+  color: #E7E7EA;
+}
+
+::selection {
+  background-color: #D7E0EE;
+  color: #1F3353;
+}
+.dark ::selection {
+  background-color: #2B4570;
+  color: #EEF2F8;
+}
+
+/* thin, quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #C9C8C2 transparent;
+}
+.dark * {
+  scrollbar-color: #3A3B40 transparent;
+}
+
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid #3C5A8A;
+  outline-offset: 2px;
+}
+
+@keyframes flip-in {
+  from { transform: rotateY(90deg); opacity: 0.3; }
+  to { transform: rotateY(0deg); opacity: 1; }
+}
+.animate-flip {
+  animation: flip-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

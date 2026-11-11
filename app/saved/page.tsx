@@ -1,0 +1,291 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Search, Trash2, Copy, Check, Layers, Pencil, X, ChevronRight } from "lucide-react";
+import ResultCard from "@/components/ResultCard";
+import { SavedTextEntry, FlashcardEntry, SourceLanguage } from "@/lib/types";
+import {
+  getSavedTexts,
+  deleteSavedText,
+  updateSavedText,
+  addFlashcard,
+  saveVocabulary,
+} from "@/lib/storage";
+import { generateId } from "@/lib/id";
+
+type LangFilter = "all" | SourceLanguage;
+
+export default function SavedTextPage() {
+  const [entries, setEntries] = useState<SavedTextEntry[]>([]);
+  const [query, setQuery] = useState("");
+  const [langFilter, setLangFilter] = useState<LangFilter>("all");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEntries(getSavedTexts());
+  }, []);
+
+  const filtered = useMemo(() => {
+    return entries.filter((e) => {
+      if (langFilter !== "all" && e.sourceLanguage !== langFilter) return false;
+      if (!query.trim()) return true;
+      const q = query.toLowerCase();
+      return (
+        e.result.word.toLowerCase().includes(q) ||
+        e.originalText.toLowerCase().includes(q) ||
+        e.translatedSummary.toLowerCase().includes(q)
+      );
+    });
+  }, [entries, query, langFilter]);
+
+  function handleDelete(id: string) {
+    deleteSavedText(id);
+    setEntries(getSavedTexts());
+    setConfirmDeleteId(null);
+    if (openId === id) setOpenId(null);
+  }
+
+  function startEdit(entry: SavedTextEntry) {
+    setEditingId(entry.id);
+    setEditDraft(entry.originalText);
+  }
+
+  function saveEdit(id: string) {
+    updateSavedText(id, { originalText: editDraft });
+    setEntries(getSavedTexts());
+    setEditingId(null);
+  }
+
+  async function handleCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleAddFlashcard(entry: SavedTextEntry) {
+    const r = entry.result;
+    const vocab = {
+      id: generateId("vocab"),
+      sourceLanguage: r.sourceLanguage,
+      word: r.word,
+      reading: r.reading,
+      meaning: r.meaning,
+      explanation: r.explanation,
+      usageNote: r.usageNote,
+      examples: r.examples,
+      relatedWords: r.relatedWords,
+      createdAt: new Date().toISOString(),
+    };
+    saveVocabulary(vocab);
+    const card: FlashcardEntry = {
+      id: generateId("card"),
+      vocabularyId: vocab.id,
+      word: vocab.word,
+      reading: vocab.reading,
+      meaning: vocab.meaning,
+      explanation: vocab.explanation,
+      examples: vocab.examples,
+      language: vocab.sourceLanguage,
+      createdAt: new Date().toISOString(),
+      reviewStatus: "new",
+    };
+    addFlashcard(card);
+    setJustAddedId(entry.id);
+    setTimeout(() => setJustAddedId((cur) => (cur === entry.id ? null : cur)), 1500);
+  }
+
+  const openEntry = entries.find((e) => e.id === openId) || null;
+
+  return (
+    <div className="max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <header className="mb-6">
+        <h1 className="font-display text-2xl text-ink dark:text-ink-dark">Saved Text</h1>
+        <p className="text-sm text-ink-soft dark:text-ink-dark/60 mt-1">
+          ข้อความและคำศัพท์ที่คุณบันทึกไว้ ({entries.length} รายการ)
+        </p>
+      </header>
+
+      <div className="flex flex-col sm:flex-row gap-2 mb-5">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft dark:text-ink-dark/40" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="ค้นหาคำศัพท์หรือข้อความ..."
+            className="focus-ring w-full border border-line dark:border-line-dark rounded bg-transparent pl-9 pr-3 py-2 text-sm text-ink dark:text-ink-dark placeholder:text-ink-soft/50 dark:placeholder:text-ink-dark/30"
+          />
+        </div>
+        <div className="flex gap-1.5">
+          {(["all", "Japanese", "English"] as LangFilter[]).map((l) => (
+            <button
+              key={l}
+              onClick={() => setLangFilter(l)}
+              className={`focus-ring text-xs font-medium rounded-full px-3 py-2 border transition-colors ${
+                langFilter === l
+                  ? "bg-ai-600 border-ai-600 text-white"
+                  : "border-line dark:border-line-dark text-ink-soft dark:text-ink-dark/60 hover:border-ai-300"
+              }`}
+            >
+              {l === "all" ? "All" : l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-ink-soft dark:text-ink-dark/50 py-10 text-center">
+          {entries.length === 0 ? "ยังไม่มีข้อความที่บันทึกไว้" : "ไม่พบรายการที่ตรงกับการค้นหา"}
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {filtered.map((entry) => (
+            <li key={entry.id} className="border border-line dark:border-line-dark rounded-lg">
+              {editingId === entry.id ? (
+                <div className="p-4">
+                  <textarea
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    rows={3}
+                    className="focus-ring w-full border border-line dark:border-line-dark rounded bg-transparent px-3 py-2 text-sm text-ink dark:text-ink-dark"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => saveEdit(entry.id)}
+                      className="focus-ring text-xs font-medium bg-ai-600 text-white rounded px-3 py-1.5 hover:bg-ai-700"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="focus-ring text-xs text-ink-soft dark:text-ink-dark/60 rounded px-3 py-1.5"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-4">
+                  <button
+                    onClick={() => setOpenId(entry.id)}
+                    className="focus-ring flex-1 min-w-0 text-left"
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={
+                          entry.sourceLanguage === "Japanese"
+                            ? "font-jp text-base text-ink dark:text-ink-dark truncate"
+                            : "font-medium text-base text-ink dark:text-ink-dark truncate"
+                        }
+                      >
+                        {entry.result.word}
+                      </span>
+                      <span className="text-[10px] uppercase text-ai-600 dark:text-ai-300 shrink-0">
+                        {entry.sourceLanguage}
+                      </span>
+                    </div>
+                    <p className="text-sm text-ink-soft dark:text-ink-dark/60 truncate mt-0.5">
+                      {entry.translatedSummary}
+                    </p>
+                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleCopy(entry.originalText)}
+                      aria-label="Copy"
+                      className="focus-ring p-1.5 text-ink-soft hover:text-ai-600 dark:text-ink-dark/50 dark:hover:text-ai-300 rounded"
+                    >
+                      <Copy size={15} />
+                    </button>
+                    <button
+                      onClick={() => handleAddFlashcard(entry)}
+                      aria-label="Add to Flashcards"
+                      className={`focus-ring p-1.5 rounded ${
+                        justAddedId === entry.id
+                          ? "text-vermilion"
+                          : "text-ink-soft hover:text-vermilion dark:text-ink-dark/50"
+                      }`}
+                    >
+                      {justAddedId === entry.id ? <Check size={15} /> : <Layers size={15} />}
+                    </button>
+                    <button
+                      onClick={() => startEdit(entry)}
+                      aria-label="Edit"
+                      className="focus-ring p-1.5 text-ink-soft hover:text-ai-600 dark:text-ink-dark/50 dark:hover:text-ai-300 rounded"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteId(entry.id)}
+                      aria-label="Delete"
+                      className="focus-ring p-1.5 text-ink-soft hover:text-vermilion dark:text-ink-dark/50 rounded"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                    <ChevronRight size={16} className="text-ink-soft/40 dark:text-ink-dark/30" />
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {openEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 dark:bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto bg-paper dark:bg-paper-dark rounded-lg shadow-xl">
+            <div className="flex justify-end p-2 sticky top-0 bg-paper dark:bg-paper-dark">
+              <button
+                onClick={() => setOpenId(null)}
+                aria-label="ปิด"
+                className="focus-ring p-1.5 text-ink-soft hover:text-ink dark:text-ink-dark/60 rounded"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-4 pb-4">
+              <ResultCard result={openEntry.result} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 dark:bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-sm bg-paper dark:bg-paper-dark border border-line dark:border-line-dark rounded-lg shadow-xl p-5">
+            <h3 className="font-display text-lg text-ink dark:text-ink-dark">ลบรายการนี้?</h3>
+            <p className="text-sm text-ink-soft dark:text-ink-dark/60 mt-1">
+              การลบไม่สามารถย้อนกลับได้
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => handleDelete(confirmDeleteId)}
+                className="focus-ring flex-1 rounded bg-vermilion text-white text-sm font-medium py-2 hover:opacity-90"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="focus-ring flex-1 rounded border border-line dark:border-line-dark text-sm text-ink dark:text-ink-dark py-2 hover:bg-ink/5 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

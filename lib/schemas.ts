@@ -44,6 +44,7 @@ export type TranslationRequest = z.infer<typeof TranslationRequestSchema>;
  */
 export const ModelTranslationOutputSchema = z.object({
   originalText: z.string(),
+  reading: z.string().nullable().optional(),
   translatedText: z.string().min(1, "ผลลัพธ์การแปลว่างเปล่า"),
   sourceLanguage: SourceLanguageEnum,
   targetLanguage: TargetLanguageEnum.default("Thai"),
@@ -107,6 +108,7 @@ export type VocabularyResultType = z.infer<typeof VocabularyResultSchema>;
  */
 export const TranslationDataSchema = z.object({
   originalText: z.string(),
+  reading: z.string().nullable().optional(),
   translatedText: z.string(),
   sourceLanguage: SourceLanguageEnum,
   targetLanguage: TargetLanguageEnum,

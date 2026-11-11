@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Trash2, Copy, Check, Layers, Pencil, X, ChevronRight } from "lucide-react";
+import {
+  Search, Trash2, Copy, Check, Layers, Pencil, X, ChevronRight,
+  Sparkles, Loader2, BookmarkPlus,
+} from "lucide-react";
 import ResultCard from "@/components/ResultCard";
-import { SavedTextEntry, FlashcardEntry, SourceLanguage } from "@/lib/types";
+import { SavedTextEntry, FlashcardEntry, SourceLanguage, TranslationResult } from "@/lib/types";
 import {
   getSavedTexts,
   deleteSavedText,
@@ -24,6 +27,13 @@ export default function SavedTextPage() {
   const [editDraft, setEditDraft] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
+
+  // ── Deep Analysis State ──────────────────────────────────────────────────
+  const [deepAnalysisResult, setDeepAnalysisResult] = useState<TranslationResult | null>(null);
+  const [deepAnalysisLoading, setDeepAnalysisLoading] = useState(false);
+  const [deepAnalysisError, setDeepAnalysisError] = useState<string | null>(null);
+  const [deepAnalysisSavedVocab, setDeepAnalysisSavedVocab] = useState(false);
+  const [deepAnalysisSavedCard, setDeepAnalysisSavedCard] = useState(false);
 
   useEffect(() => {
     setEntries(getSavedTexts());
@@ -102,6 +112,93 @@ export default function SavedTextPage() {
 
   const openEntry = entries.find((e) => e.id === openId) || null;
 
+  // ── Deep Analysis: reset when modal opens a different entry ─────────────
+  useEffect(() => {
+    setDeepAnalysisResult(null);
+    setDeepAnalysisError(null);
+    setDeepAnalysisLoading(false);
+    setDeepAnalysisSavedVocab(false);
+    setDeepAnalysisSavedCard(false);
+  }, [openId]);
+
+  async function handleDeepAnalysis(entry: SavedTextEntry) {
+    setDeepAnalysisLoading(true);
+    setDeepAnalysisResult(null);
+    setDeepAnalysisError(null);
+    setDeepAnalysisSavedVocab(false);
+    setDeepAnalysisSavedCard(false);
+    try {
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: entry.originalText,
+          sourceLanguage: entry.sourceLanguage,
+          targetLanguage: "Thai",
+          task: "vocabulary",
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.success) {
+        throw new Error(body?.error?.message || "ไม่สามารถวิเคราะห์ข้อความได้");
+      }
+      const result = (body.data?.vocabularyDetails || body.result) as TranslationResult;
+      setDeepAnalysisResult(result);
+    } catch (err) {
+      setDeepAnalysisError(err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการวิเคราะห์");
+    } finally {
+      setDeepAnalysisLoading(false);
+    }
+  }
+
+  function handleDeepAnalysisSaveVocab() {
+    if (!deepAnalysisResult) return;
+    saveVocabulary({
+      id: generateId("vocab"),
+      sourceLanguage: deepAnalysisResult.sourceLanguage,
+      word: deepAnalysisResult.word,
+      reading: deepAnalysisResult.reading,
+      meaning: deepAnalysisResult.meaning,
+      explanation: deepAnalysisResult.explanation,
+      usageNote: deepAnalysisResult.usageNote,
+      examples: deepAnalysisResult.examples,
+      relatedWords: deepAnalysisResult.relatedWords,
+      createdAt: new Date().toISOString(),
+    });
+    setDeepAnalysisSavedVocab(true);
+  }
+
+  function handleDeepAnalysisAddFlashcard() {
+    if (!deepAnalysisResult) return;
+    const vocabId = generateId("vocab");
+    saveVocabulary({
+      id: vocabId,
+      sourceLanguage: deepAnalysisResult.sourceLanguage,
+      word: deepAnalysisResult.word,
+      reading: deepAnalysisResult.reading,
+      meaning: deepAnalysisResult.meaning,
+      explanation: deepAnalysisResult.explanation,
+      usageNote: deepAnalysisResult.usageNote,
+      examples: deepAnalysisResult.examples,
+      relatedWords: deepAnalysisResult.relatedWords,
+      createdAt: new Date().toISOString(),
+    });
+    addFlashcard({
+      id: generateId("card"),
+      vocabularyId: vocabId,
+      word: deepAnalysisResult.word,
+      reading: deepAnalysisResult.reading,
+      meaning: deepAnalysisResult.meaning,
+      explanation: deepAnalysisResult.explanation,
+      examples: deepAnalysisResult.examples,
+      language: deepAnalysisResult.sourceLanguage,
+      createdAt: new Date().toISOString(),
+      reviewStatus: "new",
+    });
+    setDeepAnalysisSavedVocab(true);
+    setDeepAnalysisSavedCard(true);
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
       <header className="mb-6">
@@ -179,12 +276,19 @@ export default function SavedTextPage() {
                       <span
                         className={
                           entry.sourceLanguage === "Japanese"
-                            ? "font-jp text-base text-ink dark:text-ink-dark truncate"
-                            : "font-medium text-base text-ink dark:text-ink-dark truncate"
+                            ? "font-jp text-base text-ink dark:text-ink-dark"
+                            : "font-medium text-base text-ink dark:text-ink-dark"
                         }
                       >
-                        {entry.result.word}
+                        {entry.originalText}
                       </span>
+                      {entry.sourceLanguage === "Japanese" &&
+                        (entry.reading || entry.result?.reading) &&
+                        (entry.reading || entry.result?.reading) !== entry.originalText && (
+                          <span className="font-jp text-xs text-ink-soft dark:text-ink-dark/50">
+                            {entry.reading || entry.result?.reading}
+                          </span>
+                        )}
                       <span className="text-[10px] uppercase text-ai-600 dark:text-ai-300 shrink-0">
                         {entry.sourceLanguage}
                       </span>
@@ -241,8 +345,12 @@ export default function SavedTextPage() {
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto bg-paper dark:bg-paper-dark rounded-lg shadow-xl">
-            <div className="flex justify-end p-2 sticky top-0 bg-paper dark:bg-paper-dark">
+          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-paper dark:bg-paper-dark rounded-lg shadow-xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-2 sticky top-0 bg-paper dark:bg-paper-dark border-b border-line dark:border-line-dark">
+              <span className="text-xs font-medium text-ink-soft dark:text-ink-dark/60 uppercase tracking-wide">
+                รายละเอียดข้อความที่บันทึก
+              </span>
               <button
                 onClick={() => setOpenId(null)}
                 aria-label="ปิด"
@@ -251,8 +359,118 @@ export default function SavedTextPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="px-4 pb-4">
-              <ResultCard result={openEntry.result} />
+
+            <div className="px-4 pb-4 pt-3 space-y-4">
+              {/* Original text info */}
+              <div className="rounded-lg bg-ai-50/50 dark:bg-ai-700/10 border border-line dark:border-line-dark px-4 py-3.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs text-ink-soft dark:text-ink-dark/50">ข้อความต้นฉบับ:</p>
+                  <button
+                    onClick={() => handleCopy(openEntry.originalText)}
+                    aria-label="Copy"
+                    className="focus-ring inline-flex items-center gap-1 text-xs text-ink-soft dark:text-ink-dark/60 hover:text-ai-600 dark:hover:text-ai-300 rounded px-2 py-0.5"
+                  >
+                    <Copy size={13} />
+                    Copy
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-x-2.5">
+                  <span
+                    className={
+                      openEntry.sourceLanguage === "Japanese"
+                        ? "font-jp text-xl sm:text-2xl font-semibold text-ink dark:text-ink-dark"
+                        : "text-xl sm:text-2xl font-semibold text-ink dark:text-ink-dark"
+                    }
+                  >
+                    {openEntry.originalText}
+                  </span>
+                  {openEntry.sourceLanguage === "Japanese" &&
+                    (openEntry.reading || openEntry.result?.reading) &&
+                    (openEntry.reading || openEntry.result?.reading) !== openEntry.originalText && (
+                      <span className="font-jp text-base sm:text-lg text-ink-soft dark:text-ink-dark/60">
+                        {openEntry.reading || openEntry.result?.reading}
+                      </span>
+                    )}
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-line/60 dark:border-line-dark/60">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-ai-600 dark:text-ai-300 block mb-1">
+                    {openEntry.sourceLanguage}
+                  </span>
+                  <p className="text-base text-ink dark:text-ink-dark font-medium leading-relaxed">
+                    {openEntry.translatedSummary}
+                  </p>
+                </div>
+              </div>
+
+              {/* Deep Analysis Button */}
+              {!deepAnalysisResult && !deepAnalysisLoading && (
+                <button
+                  onClick={() => handleDeepAnalysis(openEntry)}
+                  className="focus-ring w-full inline-flex items-center justify-center gap-2 text-sm font-medium rounded-lg bg-ai-600 text-white px-4 py-2.5 hover:bg-ai-700 transition-colors"
+                >
+                  <Sparkles size={16} />
+                  วิเคราะห์คำศัพท์และไวยากรณ์เชิงลึก
+                </button>
+              )}
+
+              {/* Loading */}
+              {deepAnalysisLoading && (
+                <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink-soft dark:text-ink-dark/60">
+                  <Loader2 size={16} className="animate-spin text-ai-600" />
+                  กำลังวิเคราะห์ด้วย AI...
+                </div>
+              )}
+
+              {/* Error */}
+              {deepAnalysisError && (
+                <div className="text-sm text-vermilion bg-vermilion/10 border border-vermilion/20 rounded-lg p-4">
+                  <p className="font-medium">เกิดข้อผิดพลาด</p>
+                  <p className="mt-0.5">{deepAnalysisError}</p>
+                  <button
+                    onClick={() => handleDeepAnalysis(openEntry)}
+                    className="mt-2 text-xs underline hover:no-underline"
+                  >
+                    ลองใหม่อีกครั้ง
+                  </button>
+                </div>
+              )}
+
+              {/* Deep Analysis Result */}
+              {deepAnalysisResult && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs uppercase tracking-wide text-ink-soft dark:text-ink-dark/50">
+                      การวิเคราะห์คำศัพท์และไวยากรณ์
+                    </h3>
+                    <button
+                      onClick={() => {
+                        setDeepAnalysisResult(null);
+                        setDeepAnalysisError(null);
+                      }}
+                      className="focus-ring text-xs text-ink-soft dark:text-ink-dark/40 hover:text-ai-600 flex items-center gap-1"
+                    >
+                      <Sparkles size={12} /> วิเคราะห์ใหม่
+                    </button>
+                  </div>
+                  <ResultCard
+                    result={deepAnalysisResult}
+                    onSaveVocabulary={handleDeepAnalysisSaveVocab}
+                    onAddFlashcard={handleDeepAnalysisAddFlashcard}
+                    savedVocabulary={deepAnalysisSavedVocab}
+                    savedFlashcard={deepAnalysisSavedCard}
+                  />
+                </div>
+              )}
+
+              {/* Original ResultCard (existing vocab data) */}
+              {!deepAnalysisResult && !deepAnalysisLoading && openEntry.result.meaning.length > 0 && openEntry.result.explanation && (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-ink-soft dark:text-ink-dark/50 mb-2">
+                    ข้อมูลคำศัพท์ที่บันทึกไว้
+                  </h3>
+                  <ResultCard result={openEntry.result} />
+                </div>
+              )}
             </div>
           </div>
         </div>

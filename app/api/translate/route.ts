@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         success: true,
         data: {
           originalText: vocabResult.word || text,
+          reading: vocabResult.reading ?? null,
           translatedText: vocabResult.meaning.join(", "),
           sourceLanguage: vocabResult.sourceLanguage,
           targetLanguage: "Thai",
@@ -69,6 +70,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         originalText: translationOutput.originalText,
+        reading: translationOutput.reading ?? null,
         translatedText: translationOutput.translatedText,
         sourceLanguage: translationOutput.sourceLanguage,
         targetLanguage: translationOutput.targetLanguage,
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
       result: {
         sourceLanguage: translationOutput.sourceLanguage,
         word: translationOutput.originalText,
-        reading: null,
+        reading: translationOutput.reading ?? null,
         meaning: [translationOutput.translatedText],
         explanation: "",
         examples: [],

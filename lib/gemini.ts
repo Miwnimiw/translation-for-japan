@@ -80,8 +80,10 @@ Rules:
 5. If the source is Japanese:
    - Understand nuances of honorifics (Keigo), polite forms (Desu/Masu), and casual speech, conveying the equivalent register in Thai appropriately.
    - Accurately capture nuances of particles and verb conjugations.
+   - In the "reading" field, provide the complete, context-accurate Hiragana reading for the Japanese text (e.g., 桜 -> さくら, 駅 -> えき, 今日 -> きょう, 今日は学校に行きます。 -> きょうはがっこうにいきます。). Preserve punctuation, line breaks, and whitespace. Do NOT guess if uncertain.
 6. If the source is English:
    - Handle idioms, phrasal verbs, and tenses accurately in Thai.
+   - Set "reading" to null.
 7. NEVER return an empty translation string.
 8. Output ONLY valid JSON matching the specified schema. No markdown wrapping, no commentary, no quotes around the JSON.`;
 
@@ -89,6 +91,11 @@ const translationResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
     originalText: { type: SchemaType.STRING },
+    reading: {
+      type: SchemaType.STRING,
+      nullable: true,
+      description: "For Japanese: complete context-accurate Hiragana reading (e.g. 桜 -> さくら). For English: null.",
+    },
     translatedText: { type: SchemaType.STRING },
     sourceLanguage: { type: SchemaType.STRING, enum: ["Japanese", "English"] },
     targetLanguage: { type: SchemaType.STRING, enum: ["Thai"] },
@@ -108,6 +115,7 @@ function buildTranslationPrompt(
 
   return `${langHint}
 Target language is strictly ${targetLanguage}.
+If source is Japanese, provide the complete context-accurate Hiragana reading in the "reading" field (e.g. 桜 -> さくら, 駅 -> えき, 今日 -> きょう). If English, set "reading" to null.
 
 Translate the following input text accurately into natural Thai:
 """
@@ -158,6 +166,7 @@ export async function translateCore(
       const p = parsed as Record<string, unknown>;
       const patched = {
         originalText: String(p.originalText || text),
+        reading: typeof p.reading === "string" ? p.reading : null,
         translatedText: String(p.translatedText || ""),
         sourceLanguage: p.sourceLanguage === "English" ? "English" : "Japanese",
         targetLanguage: "Thai" as const,

@@ -190,10 +190,12 @@ export default function TranslationPage() {
   function handleSaveText() {
     if (!translation) return;
 
+    const reading = translation.reading || vocabResult?.reading || null;
+
     const dummyResult: TranslationResult = vocabResult || {
       sourceLanguage: translation.sourceLanguage,
       word: translation.originalText,
-      reading: null,
+      reading: reading,
       meaning: [translation.translatedText],
       explanation: "",
       examples: [],
@@ -203,6 +205,7 @@ export default function TranslationPage() {
     const entry: SavedTextEntry = {
       id: generateId("text"),
       originalText: translation.originalText,
+      reading: reading,
       translatedSummary: translation.translatedText,
       result: dummyResult,
       sourceLanguage: translation.sourceLanguage,
@@ -219,7 +222,7 @@ export default function TranslationPage() {
       id: generateId("vocab"),
       sourceLanguage: t.sourceLanguage,
       word: t.originalText,
-      reading: null,
+      reading: t.reading || null,
       meaning: [t.translatedText],
       explanation: `แปลจาก ${t.sourceLanguage} เป็นไทย`,
       examples: [],
@@ -237,7 +240,7 @@ export default function TranslationPage() {
       id: generateId("card"),
       vocabularyId: vocab.id,
       word: vocab.word,
-      reading: null,
+      reading: vocab.reading,
       meaning: [translation.translatedText],
       explanation: "",
       examples: [],
@@ -433,15 +436,24 @@ export default function TranslationPage() {
 
             <div className="pt-3 border-t border-line dark:border-line-dark">
               <p className="text-xs text-ink-soft dark:text-ink-dark/50 mb-1">ข้อความต้นฉบับ:</p>
-              <p
-                className={
-                  translation.sourceLanguage === "Japanese"
-                    ? "font-jp text-base text-ink-soft dark:text-ink-dark/80"
-                    : "text-base text-ink-soft dark:text-ink-dark/80"
-                }
-              >
-                {translation.originalText}
-              </p>
+              <div className="flex flex-wrap items-baseline gap-x-2.5">
+                <span
+                  className={
+                    translation.sourceLanguage === "Japanese"
+                      ? "font-jp text-lg sm:text-xl font-medium text-ink dark:text-ink-dark"
+                      : "text-lg sm:text-xl font-medium text-ink dark:text-ink-dark"
+                  }
+                >
+                  {translation.originalText}
+                </span>
+                {translation.sourceLanguage === "Japanese" &&
+                  translation.reading &&
+                  translation.reading !== translation.originalText && (
+                    <span className="font-jp text-sm sm:text-base text-ink-soft dark:text-ink-dark/60">
+                      {translation.reading}
+                    </span>
+                  )}
+              </div>
             </div>
 
             {/* Quick Action Buttons */}

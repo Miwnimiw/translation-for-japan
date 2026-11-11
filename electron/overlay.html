@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kotoba Screen Capture</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        user-select: none;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        cursor: crosshair;
+      }
+
+      #canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+
+      #hint {
+        position: fixed;
+        bottom: 32px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+        padding: 8px 20px;
+        border-radius: 20px;
+        pointer-events: none;
+        white-space: nowrap;
+        backdrop-filter: blur(8px);
+      }
+
+      #confirm-btn {
+        position: fixed;
+        display: none;
+        background: #3b82f6;
+        color: #fff;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 20px;
+        cursor: pointer;
+        pointer-events: all;
+        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.5);
+        z-index: 9999;
+        transition: background 0.15s;
+      }
+
+      #confirm-btn:hover {
+        background: #2563eb;
+      }
+
+      #size-badge {
+        position: fixed;
+        display: none;
+        background: rgba(0, 0, 0, 0.7);
+        color: #fff;
+        font-family: "Segoe UI", monospace;
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="hint">ลากเมาส์เพื่อเลือกพื้นที่ &nbsp;|&nbsp; Enter = ยืนยัน &nbsp;|&nbsp; Esc = ยกเลิก</div>
+    <div id="size-badge"></div>
+    <button id="confirm-btn">✓ จับข้อความ</button>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const hint = document.getElementById("hint");
+      const confirmBtn = document.getElementById("confirm-btn");
+      const sizeBadge = document.getElementById("size-badge");
+
+      let screenshotImg = null;
+      let isDragging = false;
+      let startX = 0,
+        startY = 0,
+        endX = 0,
+        endY = 0;
+      let hasSelection = false;
+
+      // Resize canvas to window
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        draw();
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      // ── Receive screenshot from main ──────────────────────────────────────
+      window.overlayAPI.onScreenshotReady((dataURL) => {
+        const img = new Image();
+        img.onload = () => {
+          screenshotImg = img;
+          draw();
+        };
+        img.src = dataURL;
+      });
+
+      // ── Drawing ───────────────────────────────────────────────────────────
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw screenshot
+        if (screenshotImg) {
+          ctx.drawImage(screenshotImg, 0, 0, canvas.width, canvas.height);
+        }
+
+        // Dim overlay
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (!hasSelection && !isDragging) return;
+
+        const rect = getRect();
+        if (rect.w <= 0 || rect.h <= 0) return;
+
+        // Clear selection (show original)
+        if (screenshotImg) {
+          ctx.drawImage(
+            screenshotImg,
+            (rect.x / canvas.width) * screenshotImg.width,
+            (rect.y / canvas.height) * screenshotImg.height,
+            (rect.w / canvas.width) * screenshotImg.width,
+            (rect.h / canvas.height) * screenshotImg.height,
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h
+          );
+        } else {
+          ctx.clearRect(rect.x, rect.y, rect.w, rect.h);
+        }
+
+        // Selection border
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+        // Corner handles
+        const hs = 6;
+        ctx.fillStyle = "#3b82f6";
+        const corners = [
+          [rect.x, rect.y],
+          [rect.x + rect.w, rect.y],
+          [rect.x, rect.y + rect.h],
+          [rect.x + rect.w, rect.y + rect.h],
+        ];
+        for (const [cx, cy] of corners) {
+          ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+        }
+
+        // Size badge
+        sizeBadge.style.display = "block";
+        sizeBadge.textContent = `${Math.round(rect.w)} × ${Math.round(rect.h)}`;
+        const badgeX = Math.min(rect.x + rect.w - 80, canvas.width - 90);
+        const badgeY = rect.y > 20 ? rect.y - 22 : rect.y + rect.h + 6;
+        sizeBadge.style.left = `${badgeX}px`;
+        sizeBadge.style.top = `${badgeY}px`;
+
+        // Confirm button
+        if (hasSelection) {
+          confirmBtn.style.display = "block";
+          const btnX = Math.min(
+            rect.x + rect.w - 130,
+            canvas.width - 140
+          );
+          const btnY =
+            rect.y + rect.h + 10 < canvas.height - 50
+              ? rect.y + rect.h + 10
+              : rect.y - 46;
+          confirmBtn.style.left = `${Math.max(8, btnX)}px`;
+          confirmBtn.style.top = `${Math.max(8, btnY)}px`;
+        }
+      }
+
+      function getRect() {
+        return {
+          x: Math.min(startX, endX),
+          y: Math.min(startY, endY),
+          w: Math.abs(endX - startX),
+          h: Math.abs(endY - startY),
+        };
+      }
+
+      // ── Mouse Events ──────────────────────────────────────────────────────
+      canvas.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        hasSelection = false;
+        confirmBtn.style.display = "none";
+        startX = e.clientX;
+        startY = e.clientY;
+        endX = e.clientX;
+        endY = e.clientY;
+        draw();
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        endX = e.clientX;
+        endY = e.clientY;
+        draw();
+      });
+
+      canvas.addEventListener("mouseup", (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        endX = e.clientX;
+        endY = e.clientY;
+        const rect = getRect();
+        if (rect.w > 10 && rect.h > 10) {
+          hasSelection = true;
+        }
+        draw();
+      });
+
+      // ── Keyboard ──────────────────────────────────────────────────────────
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          window.overlayAPI.cancel();
+        }
+        if (e.key === "Enter" && hasSelection) {
+          confirmCapture();
+        }
+      });
+
+      // ── Confirm Capture ───────────────────────────────────────────────────
+      confirmBtn.addEventListener("click", confirmCapture);
+
+      function confirmCapture() {
+        const rect = getRect();
+        if (rect.w <= 0 || rect.h <= 0) return;
+
+        // Crop from screenshot image
+        const offscreen = document.createElement("canvas");
+        offscreen.width = rect.w;
+        offscreen.height = rect.h;
+        const octx = offscreen.getContext("2d");
+
+        if (screenshotImg) {
+          // Map canvas coords → screenshot coords
+          const scaleX = screenshotImg.width / canvas.width;
+          const scaleY = screenshotImg.height / canvas.height;
+          octx.drawImage(
+            screenshotImg,
+            rect.x * scaleX,
+            rect.y * scaleY,
+            rect.w * scaleX,
+            rect.h * scaleY,
+            0,
+            0,
+            rect.w,
+            rect.h
+          );
+        }
+
+        const croppedDataURL = offscreen.toDataURL("image/png");
+        window.overlayAPI.sendRegion(croppedDataURL);
+      }
+    </script>
+  </body>
+</html>
+

@@ -62,6 +62,7 @@ export interface VocabularyEntry {
 export interface SavedTextEntry {
   id: string;
   originalText: string;
+  reading?: string | null; // Contextual Hiragana reading for Japanese text
   translatedSummary: string; // short Thai summary/translation of the whole text
   result: TranslationResult;
   sourceLanguage: SourceLanguage;

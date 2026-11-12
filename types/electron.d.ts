@@ -34,6 +34,18 @@ interface ElectronAPI {
    */
   onOcrImageReady: (callback: (dataURL: string) => void) => () => void;
 
+  /**
+   * Ask the main process to navigate renderer to a Next.js route path.
+   * The route will be broadcast back via onNavigateTo.
+   */
+  navigateTo: (routePath: string) => Promise<void>;
+
+  /**
+   * Listen for navigate-to events pushed from main process.
+   * Returns a cleanup function.
+   */
+  onNavigateTo: (callback: (routePath: string) => void) => () => void;
+
   /** True when running inside Electron */
   isElectron: true;
 }

@@ -37,7 +37,7 @@ interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  shortcut: "CommandOrControl+Shift+T",
+  shortcut: "CommandOrControl+Shift+E",
   startWithWindows: false,
   minimizeToTray: true,
 };
@@ -193,7 +193,7 @@ function createTray(): void {
       },
     },
     {
-      label: "จับข้อความจากหน้าจอ (Ctrl+Shift+T)",
+      label: "จับข้อความจากหน้าจอ (Ctrl+Shift+E)",
       click: () => triggerScreenCapture(),
     },
     { type: "separator" },
@@ -286,7 +286,7 @@ async function triggerScreenCapture(): Promise<void> {
     });
 
     overlayWindow.setAlwaysOnTop(true, "screen-saver");
-    overlayWindow.loadFile(path.join(__dirname, "overlay.html"));
+    overlayWindow.loadFile(path.join(__dirname, "..", "overlay.html"));
 
     overlayWindow.once("ready-to-show", () => {
       overlayWindow?.show();
@@ -359,6 +359,11 @@ function setupIPC(): void {
 
   // Renderer → Main: get platform info
   ipcMain.handle("get-platform", () => process.platform);
+
+  // Renderer → Main: navigate the main window to a Next.js route
+  ipcMain.handle("navigate-to", (_event, routePath: string) => {
+    mainWindow?.webContents.send("navigate-to", routePath);
+  });
 }
 
 // ─── App Quit ─────────────────────────────────────────────────────────────────

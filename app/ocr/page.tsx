@@ -54,9 +54,11 @@ export default function OcrPage() {
   const [translateError, setTranslateError] = useState<string | null>(null);
   const [translationData, setTranslationData] = useState<TranslationData | null>(null);
   const [vocabResult, setVocabResult] = useState<TranslationResult | null>(null);
-  const [savedVocab, setSavedVocab] = useState(false);
   const [savedCard, setSavedCard] = useState(false);
   const [savedTextSuccess, setSavedTextSuccess] = useState(false);
+
+  // Detect Electron environment (client-side only)
+  const isElectron = typeof window !== "undefined" && !!window.electronAPI?.isElectron;
 
   // -------------------------------------------------------------
   // 1. Screen Capture API Implementation
@@ -65,6 +67,16 @@ export default function OcrPage() {
   const startScreenCapture = useCallback(async () => {
     if (isCapturingScreen || isOcrLoading || screenCanvas) return;
 
+    // ── Electron path: use native desktopCapturer overlay ────────
+    if (typeof window !== "undefined" && window.electronAPI?.isElectron) {
+      setOcrError(null);
+      await window.electronAPI.triggerCapture();
+      // The overlay will crop the region and fire ocr-image-ready IPC
+      // which is handled in the useEffect below.
+      return;
+    }
+
+    // ── Browser path: getDisplayMedia ────────────────────────────
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getDisplayMedia) {
       setOcrError("เบราว์เซอร์นี้ไม่รองรับ Screen Capture API กรุณาใช้การอัปโหลดรูปภาพแทน");
       return;
@@ -133,6 +145,51 @@ export default function OcrPage() {
       setIsCapturingScreen(false);
     }
   }, [isCapturingScreen, isOcrLoading, screenCanvas]);
+
+  // -------------------------------------------------------------
+  // 1b. Electron IPC listener: ocr-image-ready
+  //     Fires when the native overlay sends a cropped dataURL.
+  // -------------------------------------------------------------
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.electronAPI?.onOcrImageReady) return;
+
+    const cleanup = window.electronAPI.onOcrImageReady(async (dataURL: string) => {
+      setIsOcrLoading(true);
+      setOcrError(null);
+
+      try {
+        // Convert dataURL → Blob → FormData → /api/ocr
+        const res = await fetch(dataURL);
+        const blob = await res.blob();
+
+        const formData = new FormData();
+        formData.append("image", blob, "electron-screen-capture.png");
+
+        const ocrRes = await fetch("/api/ocr", { method: "POST", body: formData });
+        const data = await ocrRes.json();
+
+        if (!ocrRes.ok) {
+          throw new Error(data.error?.message || data.error || "อ่านข้อความไม่สำเร็จ");
+        }
+
+        const extracted = String(data.text || "").trim();
+        if (!extracted) {
+          throw new Error("ไม่พบข้อความที่อ่านได้ในพื้นที่ที่เลือก กรุณาลองเลือกพื้นที่ใหม่");
+        }
+
+        setText(extracted);
+        setModalText(extracted);
+      } catch (err) {
+        setOcrError(err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการอ่านข้อความ");
+      } finally {
+        setIsOcrLoading(false);
+      }
+    });
+
+    return cleanup;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // -------------------------------------------------------------
   // 2. Keyboard Shortcut Listener (Ctrl + Shift + E)
@@ -401,11 +458,16 @@ export default function OcrPage() {
             Capture Screen Text
           </h2>
           <p className="text-xs text-ink-soft dark:text-ink-dark/50 mt-0.5">
-            กดปุ่มนี้หรือกดคีย์ลัด{" "}
-            <kbd className="px-1.5 py-0.5 rounded bg-paper dark:bg-paper-dark border border-line dark:border-line-dark font-mono text-[11px] text-ink dark:text-ink-dark">
-              Ctrl + Shift + E
-            </kbd>{" "}
-            เพื่อเริ่มจับภาพพื้นที่หน้าจอ
+            {isElectron
+              ? "กดปุ่มนี้หรือกด Ctrl+Shift+E จากแอปใดก็ได้ เพื่อเปิด Overlay จับข้อความ"
+              : <>
+                  กดปุ่มนี้หรือกดคีย์ลัด{" "}
+                  <kbd className="px-1.5 py-0.5 rounded bg-paper dark:bg-paper-dark border border-line dark:border-line-dark font-mono text-[11px] text-ink dark:text-ink-dark">
+                    Ctrl + Shift + E
+                  </kbd>{" "}
+                  เพื่อเริ่มจับภาพพื้นที่หน้าจอ
+                </>
+            }
           </p>
         </div>
 
@@ -467,26 +529,50 @@ export default function OcrPage() {
             <ScanText size={16} className="text-ai-600 dark:text-ai-300" />
             วิธีใช้งาน Screen Region Capture
           </h3>
-          <ol className="text-xs text-ink-soft dark:text-ink-dark/70 space-y-2 list-decimal list-inside leading-relaxed">
-            <li>
-              คลิกปุ่ม <strong>&quot;Capture Screen Text&quot;</strong> ด้านบน หรือกดคีย์ลัด{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
-                Ctrl + Shift + E
-              </kbd>
-            </li>
-            <li>เลือกหน้าจอ, หน้าต่างโปรแกรม หรือแท็บที่ต้องการจับภาพ</li>
-            <li>
-              เมื่อหน้าจอขึ้นกรอบสีดำ ให้<strong>คลิกเมาส์ค้างแล้วลากครอบข้อความ</strong>ภาษาญี่ปุ่นหรืออังกฤษ
-            </li>
-            <li>
-              กดปุ่ม <strong>Capture Text</strong> หรือกด{" "}
-              <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
-                Enter
-              </kbd>{" "}
-              เพื่ออ่านข้อความด้วย Gemini OCR
-            </li>
-            <li>ตรวจสอบและแก้ไขข้อความในหน้าต่างผลลัพธ์ แล้วกดยืนยันเพื่อนำไปแปลภาษา</li>
-          </ol>
+          {isElectron ? (
+            <ol className="text-xs text-ink-soft dark:text-ink-dark/70 space-y-2 list-decimal list-inside leading-relaxed">
+              <li>เปิดแอปหรือเว็บไซต์ที่มีข้อความที่ต้องการ</li>
+              <li>
+                กดคีย์ลัด{" "}
+                <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
+                  Ctrl + Shift + E
+                </kbd>{" "}
+                จากที่ใดก็ได้ หรือคลิกปุ่ม <strong>&quot;Capture Screen Text&quot;</strong>
+              </li>
+              <li>
+                หน้าจอจะมืดลง ให้<strong>คลิกเมาส์ค้างแล้วลากครอบข้อความ</strong>ที่ต้องการ
+              </li>
+              <li>
+                กดปุ่ม <strong>Capture Text</strong> หรือกด{" "}
+                <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
+                  Enter
+                </kbd>{" "}
+                เพื่ออ่านข้อความด้วย Gemini OCR
+              </li>
+              <li>ตรวจสอบและแก้ไขข้อความในหน้าต่างผลลัพธ์ แล้วกดยืนยันเพื่อนำไปแปลภาษา</li>
+            </ol>
+          ) : (
+            <ol className="text-xs text-ink-soft dark:text-ink-dark/70 space-y-2 list-decimal list-inside leading-relaxed">
+              <li>
+                คลิกปุ่ม <strong>&quot;Capture Screen Text&quot;</strong> ด้านบน หรือกดคีย์ลัด{" "}
+                <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
+                  Ctrl + Shift + E
+                </kbd>
+              </li>
+              <li>เลือกหน้าจอ, หน้าต่างโปรแกรม หรือแท็บที่ต้องการจับภาพ</li>
+              <li>
+                เมื่อหน้าจอขึ้นกรอบสีดำ ให้<strong>คลิกเมาส์ค้างแล้วลากครอบข้อความ</strong>ภาษาญี่ปุ่นหรืออังกฤษ
+              </li>
+              <li>
+                กดปุ่ม <strong>Capture Text</strong> หรือกด{" "}
+                <kbd className="px-1.5 py-0.5 rounded bg-ink/5 dark:bg-white/5 border border-line dark:border-line-dark font-mono">
+                  Enter
+                </kbd>{" "}
+                เพื่ออ่านข้อความด้วย Gemini OCR
+              </li>
+              <li>ตรวจสอบและแก้ไขข้อความในหน้าต่างผลลัพธ์ แล้วกดยืนยันเพื่อนำไปแปลภาษา</li>
+            </ol>
+          )}
         </div>
       )}
 

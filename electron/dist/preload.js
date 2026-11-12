@@ -22,6 +22,20 @@ electron_1.contextBridge.exposeInMainWorld("electronAPI", {
         // Return cleanup function
         return () => electron_1.ipcRenderer.removeListener("ocr-image-ready", handler);
     },
+    /**
+     * Ask the main process to navigate the renderer to a route.
+     * The renderer layout listens for the reply via onNavigateTo.
+     */
+    navigateTo: (routePath) => electron_1.ipcRenderer.invoke("navigate-to", routePath),
+    /**
+     * Listen for navigation requests pushed from the main process.
+     * Returns a cleanup function.
+     */
+    onNavigateTo: (callback) => {
+        const handler = (_event, routePath) => callback(routePath);
+        electron_1.ipcRenderer.on("navigate-to", handler);
+        return () => electron_1.ipcRenderer.removeListener("navigate-to", handler);
+    },
     /** Check if running inside Electron */
     isElectron: true,
 });

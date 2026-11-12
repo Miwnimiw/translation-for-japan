@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Noto_Sans_JP, Noto_Serif_JP } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import ElectronNavigator from "@/components/ElectronNavigator";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const notoSansJP = Noto_Sans_JP({
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.variable} ${notoSansJP.variable} ${notoSerifJP.variable} font-sans antialiased`}>
         <div className="flex min-h-screen">
           <Sidebar />
+          <ElectronNavigator />
           <main className="flex-1 min-w-0 md:ml-64 pb-20 md:pb-0">{children}</main>
         </div>
       </body>
